@@ -7,6 +7,7 @@ import zipfile
 import io
 import pandas as pd
 from datetime import datetime
+from config import URL_CVM_BASE
 
 def baixar_zip_cvm(ano, mes):
     """Baixa o ZIP do Informe Mensal de FIDC da CVM"""
@@ -66,8 +67,6 @@ def carregar_dados_cvm():
     print("=" * 50)
     print("🔍 CVM FIDC - Download de Dados")
     print("=" * 50)
-
-    from config import URL_CVM_BASE
 
     zip_bytes, ano, mes = encontrar_ultima_competencia()
     tabelas = extrair_tabelas_do_zip(zip_bytes)
