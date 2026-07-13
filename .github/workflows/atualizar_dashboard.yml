@@ -1,4 +1,4 @@
-name:name: Dashboard FIDC
+name: Dashboard FIDC
 
 on:
   workflow_dispatch:
