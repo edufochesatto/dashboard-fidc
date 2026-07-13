@@ -1,4 +1,4 @@
-name: Dashboard de Governanca de FIDCs
+name: Dashboard FIDC
 
 on:
   schedule:
@@ -7,30 +7,26 @@ on:
 
 jobs:
   atualizar:
-    name: Pipeline CVM para Google Sheets
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
 
-      - name: Configurar Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.10'
 
-      - name: Instalar dependencias
-        run: pip install -r requirements.txt
+      - run: pip install -r requirements.txt
 
-      - name: Executar pipeline
+      - name: Executar
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CREDENTIALS }}
         run: python src/main.py
 
-      - name: Registrar timestamp
-        run: echo "Ultima atualizacao: $(date -u)" >> ultima_execucao.txt
+      - name: Timestamp
+        run: date -u > ultima_execucao.txt
 
-      - name: Salvar no repositorio
-        uses: stefanzweifel/git-auto-commit-action@v4
+      - uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: Atualizacao automatica do dashboard
+          commit_message: auto
           file_pattern: ultima_execucao.txt
