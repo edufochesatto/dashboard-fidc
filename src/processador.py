@@ -2,10 +2,8 @@
 Processa os dados brutos da CVM e calcula indicadores de governança
 para TODOS os FIDCs disponíveis.
 """
-
 import pandas as pd
 import numpy as np
-
 
 def processar_tab_i(df):
     """TAB_I: Balanço Patrimonial - PL, Carteira, PDD"""
@@ -13,7 +11,7 @@ def processar_tab_i(df):
         return pd.DataFrame()
     cols = df.columns.tolist()
 
-    # Mapeamento flexível: tenta nomes exatos, depois busca parcial
+    # Busca flexível de colunas (nomes exatos ou aproximados)
     col_cnpj = 'CNPJ_FUNDO' if 'CNPJ_FUNDO' in cols else \
                ([c for c in cols if 'CNPJ' in c.upper() and 'FUND' in c.upper()] or [None])[0]
     col_nome = 'DENOM_SOCIAL' if 'DENOM_SOCIAL' in cols else \
@@ -26,8 +24,7 @@ def processar_tab_i(df):
               ([c for c in cols if 'PDD' in c.upper()] or [None])[0]
 
     if not col_cnpj:
-        print("  ⚠️ TAB_I: Coluna CNPJ_FUNDO não encontrada!")
-        print(f"  Colunas disponíveis: {cols[:20]}...")
+        print(f"  TAB_I: CNPJ nao encontrado! Colunas: {cols[:15]}...")
         return pd.DataFrame()
 
     rename_map = {}
@@ -36,11 +33,6 @@ def processar_tab_i(df):
     if col_pl: rename_map[col_pl] = 'pl'
     if col_carteira: rename_map[col_carteira] = 'carteira'
     if col_pdd: rename_map[col_pdd] = 'pdd'
-
-    if not col_pl and not col_carteira and not col_pdd:
-        print("  ⚠️ TAB_I: Nenhuma coluna financeira encontrada!")
-        print(f"  Colunas disponíveis: {cols}")
-        return pd.DataFrame()
 
     df_proc = df[list(rename_map.keys())].rename(columns=rename_map).copy()
     for col in ['pl', 'carteira', 'pdd']:
@@ -58,26 +50,58 @@ def processar_tab_i(df):
 
     if 'cnpj_fundo' in df_proc.columns:
         df_proc['cnpj_fundo'] = (
-            df_proc['cnpj_fundo']
-            .astype(str).str.replace(r'\D', '', regex=True)
-            .str.zfill(14)
+            df_proc['cnpj_fundo'].astype(str)
+            .str.replace(r'\D', '', regex=True).str.zfill(14)
         )
 
-    print(f"  ✅ TAB_I: {len(df_proc)} fundos, colunas: {list(df_proc.columns)}")
+    print(f"  TAB_I: {len(df_proc)} fundos, colunas: {list(df_proc.columns)}")
     return df_proc
-    
-def processar_tab_ii(df):
-    """TAB_II: Carteira Detalhada - Concentração por devedor"""
+
+def processar_tab_vi(df):
+    """TAB_VI: Resultado - Rentabilidade e %CDI"""
     if df is None or df.empty:
         return pd.DataFrame()
+    cols = df.columns.tolist()
+    col_cnpj = [c for c in cols if 'CNPJ' in c.upper()]
+    col_rent = [c for c in cols if 'RENTAB' in c.upper()]
+    col_cdi = [c for c in cols if 'CDI' in c.upper()]
+    if not col_cnpj or not col_rent:
+        return pd.DataFrame()
+    rename_map = {col_cnpj[0]: 'cnpj_fundo'}
+    if col_rent:
+        rename_map[col_rent[0]] = 'rentabilidade'
+    if col_cdi:
+        rename_map[col_cdi[0]] = 'cdi'
+    df_proc = df[list(rename_map.keys())].rename(columns=rename_map).copy()
+    for col in ['rentabilidade', 'cdi']:
+        if col in df_proc.columns:
+            df_proc[col] = pd.to_numeric(df_proc[col], errors='coerce').fillna(0)
+    if 'rentabilidade' in df_proc.columns and 'cdi' in df_proc.columns:
+        df_proc['pct_cdi'] = np.where(
+            df_proc['cdi'] > 0,
+            (df_proc['rentabilidade'] / df_proc['cdi'] * 100).round(0),
+            0
+        )
+        df_proc['premio_pp'] = (df_proc['pct_cdi'] - 100).round(0)
+    else:
+        df_proc['pct_cdi'] = 0
+        df_proc['premio_pp'] = 0
+    if 'cnpj_fundo' in df_proc.columns:
+        df_proc['cnpj_fundo'] = (
+            df_proc['cnpj_fundo'].astype(str)
+            .str.replace(r'\D', '', regex=True).str.zfill(14)
+        )
+    return df_proc
 
+def processar_tab_ii(df):
+    """TAB_II: Carteira Detalhada - Concentracao por devedor"""
+    if df is None or df.empty:
+        return pd.DataFrame()
     cols = df.columns.tolist()
     col_cnpj = [c for c in cols if 'CNPJ' in c.upper() and 'FUNDO' in c.upper()]
     col_valor = [c for c in cols if 'VL_' in c.upper() or 'VALOR' in c.upper()]
-
     if not col_cnpj or not col_valor:
         return pd.DataFrame()
-
     df_proc = df[[col_cnpj[0], col_valor[0]]].copy()
     df_proc = df_proc.rename(columns={col_cnpj[0]: 'cnpj_fundo', col_valor[0]: 'vl_operacao'})
     df_proc['cnpj_fundo'] = (
@@ -99,22 +123,18 @@ def processar_tab_ii(df):
             'num_operacoes': len(grupo),
             'carteira_total': round(total, 2),
         })
-
     conc = df_proc.groupby('cnpj_fundo').apply(calc_concentracao).reset_index()
     return conc
 
 def processar_tab_v(df):
-    """TAB_V: Movimentação - Recompra"""
+    """TAB_V: Movimentacao - Recompra"""
     if df is None or df.empty:
         return pd.DataFrame()
-
     cols = df.columns.tolist()
     col_cnpj = [c for c in cols if 'CNPJ' in c.upper() and 'FUNDO' in c.upper()]
     col_recompra = [c for c in cols if 'RECOMPRA' in c.upper()]
-
     if not col_cnpj:
         return pd.DataFrame()
-
     if col_recompra:
         df_proc = df[[col_cnpj[0], col_recompra[0]]].copy()
         df_proc = df_proc.rename(columns={
@@ -124,58 +144,46 @@ def processar_tab_v(df):
         df_proc = df[[col_cnpj[0]]].copy()
         df_proc = df_proc.rename(columns={col_cnpj[0]: 'cnpj_fundo'})
         df_proc['vl_recompra'] = 0
-
     df_proc['cnpj_fundo'] = (
         df_proc['cnpj_fundo'].astype(str)
         .str.replace(r'\D', '', regex=True).str.zfill(14)
     )
     df_proc['vl_recompra'] = pd.to_numeric(df_proc['vl_recompra'], errors='coerce').fillna(0)
-
-    recompra = df_proc.groupby('cnpj_fundo')['vl_recompra'].sum().reset_index()
-    return recompra
+    return df_proc.groupby('cnpj_fundo')['vl_recompra'].sum().reset_index()
 
 def processar_tab_vii(df):
-    """TAB_VII: Concentração por Cedente/Sacado"""
+    """TAB_VII: Concentracao por Cedente/Sacado"""
     if df is None or df.empty:
         return pd.DataFrame()
-
     cols = df.columns.tolist()
     col_cnpj = [c for c in cols if 'CNPJ' in c.upper() and 'FUNDO' in c.upper()]
     if not col_cnpj:
         return pd.DataFrame()
-
     df_proc = df[[col_cnpj[0]]].copy()
     df_proc = df_proc.rename(columns={col_cnpj[0]: 'cnpj_fundo'})
     df_proc['cnpj_fundo'] = (
         df_proc['cnpj_fundo'].astype(str)
         .str.replace(r'\D', '', regex=True).str.zfill(14)
     )
-
-    # Conta quantos cedentes/sacados por fundo
-    qtd = df_proc.groupby('cnpj_fundo').size().reset_index(name='num_cedentes')
-    return qtd
+    return df_proc.groupby('cnpj_fundo').size().reset_index(name='num_cedentes')
 
 def processar_tab_iv(df):
     """TAB_IV: Prazos dos Ativos"""
     if df is None or df.empty:
         return pd.DataFrame()
-
     cols = df.columns.tolist()
     col_cnpj = [c for c in cols if 'CNPJ' in c.upper() and 'FUNDO' in c.upper()]
     if not col_cnpj:
         return pd.DataFrame()
-
     df_proc = df[[col_cnpj[0]]].copy()
     df_proc = df_proc.rename(columns={col_cnpj[0]: 'cnpj_fundo'})
     df_proc['cnpj_fundo'] = (
         df_proc['cnpj_fundo'].astype(str)
         .str.replace(r'\D', '', regex=True).str.zfill(14)
     )
+    return df_proc.groupby('cnpj_fundo').size().reset_index(name='num_prazos')
 
-    qtd = df_proc.groupby('cnpj_fundo').size().reset_index(name='num_prazos')
-    return qtd
-
-defdef consolidar_fundos(tabelas, competencia):
+def consolidar_fundos(tabelas, competencia):
     """Consolida dados de TODOS os fundos a partir de todas as tabelas"""
     print("Consolidando dados de todos os FIDCs...")
     print(f"  Tabelas disponiveis: {list(tabelas.keys())}")
@@ -205,12 +213,12 @@ defdef consolidar_fundos(tabelas, competencia):
             base = base[base['pl'] > 0]
             print(f"  Fundos com PL > 0: {len(base)} (removidos {antes - len(base)} sem PL)")
     else:
-        print("  TAB_I esta vazia!")
+        print("  TAB_I esta vazia! Verificando...")
         if 'inf_mensal_fidc_tab_I' in tabelas:
             print("  Chave existe! Mas processar_tab_i retornou vazio.")
         elif any('tab_I' in k.lower() for k in tabelas.keys()):
-            chave_encontrada = [k for k in tabelas.keys() if 'tab_I' in k.lower()]
-            print(f"  Chaves com 'tab_I': {chave_encontrada}")
+            chave = [k for k in tabelas.keys() if 'tab_I' in k.lower()]
+            print(f"  Chaves com 'tab_I': {chave}")
         else:
             print(f"  Todas as chaves: {list(tabelas.keys())}")
 
