@@ -7,10 +7,10 @@ import zipfile
 import io
 import pandas as pd
 from datetime import datetime
-from config import URL_CVM_BASE
+
+URL_CVM_BASE = "https://dados.cvm.gov.br/dados/FIDC/DOC/INF_MENSAL/DADOS"
 
 def baixar_zip_cvm(ano, mes):
-    """Baixa o ZIP do Informe Mensal de FIDC da CVM"""
     url = f"{URL_CVM_BASE}/inf_mensal_fidc_{ano}{mes:02d}.zip"
     print(f"Baixando: {url}")
     try:
@@ -25,7 +25,6 @@ def baixar_zip_cvm(ano, mes):
         return None
 
 def extrair_tabelas_do_zip(zip_bytes):
-    """Extrai todos os CSVs do ZIP e retorna um dict {nome_tabela: DataFrame}"""
     tabelas = {}
     try:
         with zipfile.ZipFile(zip_bytes) as z:
@@ -48,7 +47,6 @@ def extrair_tabelas_do_zip(zip_bytes):
     return tabelas
 
 def encontrar_ultima_competencia():
-    """Tenta baixar o mes atual - 2 (delay da CVM). Se falhar, tenta anteriores."""
     hoje = datetime.now()
     for tentativa in range(4):
         mes = hoje.month - 2 - tentativa
@@ -63,11 +61,8 @@ def encontrar_ultima_competencia():
     raise Exception("Nao foi possivel baixar dados da CVM apos 4 tentativas")
 
 def carregar_dados_cvm():
-    """Funcao principal: baixa e extrai dados da CVM"""
     print("CVM FIDC - Download de Dados")
-
     zip_bytes, ano, mes = encontrar_ultima_competencia()
     tabelas = extrair_tabelas_do_zip(zip_bytes)
-
     print(f"Total de tabelas carregadas: {len(tabelas)}")
     return tabelas, f"{mes:02d}/{ano}"
