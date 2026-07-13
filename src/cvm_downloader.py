@@ -25,13 +25,18 @@ def baixar_zip_cvm(ano, mes):
         return None
 
 def extrair_tabelas_do_zip(zip_bytes):
+    """Extrai todos os CSVs do ZIP e retorna um dict {nome_tabela: DataFrame}"""
     tabelas = {}
     try:
         with zipfile.ZipFile(zip_bytes) as z:
             for nome in z.namelist():
                 if not nome.endswith(('.csv', '.txt')):
                     continue
-                nome_tabela = nome.split('/')[-1].replace('.csv', '').replace('.txt', '')
+                nome_arquivo = nome.split('/')[-1].replace('.csv', '').replace('.txt', '')
+                # Remove sufixo _YYYYMM (ex: _202605) dos nomes da CVM
+                nome_tabela = nome_arquivo
+                if len(nome_arquivo) > 7 and nome_arquivo[-7] == '_' and nome_arquivo[-6:].isdigit():
+                    nome_tabela = nome_arquivo[:-7]
                 try:
                     df = pd.read_csv(
                         z.open(nome), sep=';', encoding='latin1',
