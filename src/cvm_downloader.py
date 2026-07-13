@@ -25,7 +25,7 @@ def baixar_zip_cvm(ano, mes):
         return None
 
 def extrair_tabelas_do_zip(zip_bytes):
-    """Extrai todos os CSVs do ZIP e retorna um dict {nome_tabela: DataFrame}"""
+    """Extrai todos os CSVs do ZIP. Remove o sufixo _YYYYMM do nome das tabelas."""
     tabelas = {}
     try:
         with zipfile.ZipFile(zip_bytes) as z:
@@ -33,7 +33,7 @@ def extrair_tabelas_do_zip(zip_bytes):
                 if not nome.endswith(('.csv', '.txt')):
                     continue
                 nome_arquivo = nome.split('/')[-1].replace('.csv', '').replace('.txt', '')
-                # Remove sufixo _YYYYMM (ex: _202605) dos nomes da CVM
+                # Remove sufixo _YYYYMM (ex: _202605) dos nomes dos arquivos da CVM
                 nome_tabela = nome_arquivo
                 if len(nome_arquivo) > 7 and nome_arquivo[-7] == '_' and nome_arquivo[-6:].isdigit():
                     nome_tabela = nome_arquivo[:-7]
