@@ -12,16 +12,16 @@ from config import URL_CVM_BASE
 def baixar_zip_cvm(ano, mes):
     """Baixa o ZIP do Informe Mensal de FIDC da CVM"""
     url = f"{URL_CVM_BASE}/inf_mensal_fidc_{ano}{mes:02d}.zip"
-    print(f"📥 Baixando: {url}")
+    print(f"Baixando: {url}")
     try:
         resp = requests.get(url, timeout=60)
         if resp.status_code == 200:
             return io.BytesIO(resp.content)
         else:
-            print(f"⚠️  HTTP {resp.status_code} para {ano}{mes:02d}")
+            print(f"HTTP {resp.status_code} para {ano}{mes:02d}")
             return None
     except Exception as e:
-        print(f"❌ Erro ao baixar: {e}")
+        print(f"Erro ao baixar: {e}")
         return None
 
 def extrair_tabelas_do_zip(zip_bytes):
@@ -40,15 +40,15 @@ def extrair_tabelas_do_zip(zip_bytes):
                     )
                     df.columns = df.columns.str.strip()
                     tabelas[nome_tabela] = df
-                    print(f"  ✅ {nome_tabela}: {len(df)} linhas, {len(df.columns)} colunas")
+                    print(f"  OK {nome_tabela}: {len(df)} linhas, {len(df.columns)} colunas")
                 except Exception as e:
-                    print(f"  ⚠️  Erro ao ler {nome}: {e}")
+                    print(f"  Erro ao ler {nome}: {e}")
     except Exception as e:
-        print(f"❌ Erro ao extrair ZIP: {e}")
+        print(f"Erro ao extrair ZIP: {e}")
     return tabelas
 
 def encontrar_ultima_competencia():
-    """Tenta baixar o mês atual - 2 (delay da CVM). Se falhar, tenta anteriores."""
+    """Tenta baixar o mes atual - 2 (delay da CVM). Se falhar, tenta anteriores."""
     hoje = datetime.now()
     for tentativa in range(4):
         mes = hoje.month - 2 - tentativa
@@ -58,18 +58,16 @@ def encontrar_ultima_competencia():
             ano -= 1
         zip_bytes = baixar_zip_cvm(ano, mes)
         if zip_bytes:
-            print(f"📅 Competência encontrada: {mes:02d}/{ano}")
+            print(f"Competencia encontrada: {mes:02d}/{ano}")
             return zip_bytes, ano, mes
-    raise Exception("❌ Não foi possível baixar dados da CVM após 4 tentativas")
+    raise Exception("Nao foi possivel baixar dados da CVM apos 4 tentativas")
 
 def carregar_dados_cvm():
-    """Função principal: baixa e extrai dados da CVM"""
-    print("=" * 50)
-    print("🔍 CVM FIDC - Download de Dados")
-    print("=" * 50)
+    """Funcao principal: baixa e extrai dados da CVM"""
+    print("CVM FIDC - Download de Dados")
 
     zip_bytes, ano, mes = encontrar_ultima_competencia()
     tabelas = extrair_tabelas_do_zip(zip_bytes)
 
-    print(f"\n📊 Total de tabelas carregadas: {len(tabelas)}")
+    print(f"Total de tabelas carregadas: {len(tabelas)}")
     return tabelas, f"{mes:02d}/{ano}"
