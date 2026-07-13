@@ -183,15 +183,28 @@ def processar_tab_iv(df):
     )
     return df_proc.groupby('cnpj_fundo').size().reset_index(name='num_prazos')
 
+def _get_tabela(tabelas, nome_base):
+    """Tenta encontrar a tabela pelo nome base, aceitando sufixo _YYYYMM ou _YYYY não numérico"""
+    # Tenta nome exato primeiro
+    if nome_base in tabelas:
+        return tabelas[nome_base]
+    # Tenta encontrar qualquer chave que COMECE com o nome base
+    for chave in tabelas:
+        if chave.startswith(nome_base):
+            print(f"  Encontrada tabela via fallback: {chave}")
+            return tabelas[chave]
+    print(f"  Tabela {nome_base} NAO encontrada! Chaves disponiveis: {[k for k in tabelas.keys() if nome_base.split('_')[-1] in k]}")
+    return None
+
 def consolidar_fundos(tabelas, competencia):
     """Consolida dados de TODOS os fundos a partir de todas as tabelas"""
     print("Consolidando dados de todos os FIDCs...")
     print(f"  Tabelas disponiveis: {list(tabelas.keys())}")
 
-    tab_i = processar_tab_i(tabelas.get('inf_mensal_fidc_tab_I'))
-    tab_vi = processar_tab_vi(tabelas.get('inf_mensal_fidc_tab_VI'))
-    tab_ii = processar_tab_ii(tabelas.get('inf_mensal_fidc_tab_II'))
-    tab_v = processar_tab_v(tabelas.get('inf_mensal_fidc_tab_V'))
+    tab_i = processar_tab_i(_get_tabela(tabelas, 'inf_mensal_fidc_tab_I'))
+    tab_vi = processar_tab_vi(_get_tabela(tabelas, 'inf_mensal_fidc_tab_VI'))
+    tab_ii = processar_tab_ii(_get_tabela(tabelas, 'inf_mensal_fidc_tab_II'))
+    tab_v = processar_tab_v(_get_tabela(tabelas, 'inf_mensal_fidc_tab_V'))
 
     base = tab_i.copy() if not tab_i.empty else pd.DataFrame()
     print(f"  TAB_I processada: {len(base)} fundos")
@@ -213,14 +226,11 @@ def consolidar_fundos(tabelas, competencia):
             base = base[base['pl'] > 0]
             print(f"  Fundos com PL > 0: {len(base)} (removidos {antes - len(base)} sem PL)")
     else:
-        print("  TAB_I esta vazia! Verificando...")
-        if 'inf_mensal_fidc_tab_I' in tabelas:
-            print("  Chave existe! Mas processar_tab_i retornou vazio.")
-        elif any('tab_I' in k.lower() for k in tabelas.keys()):
-            chave = [k for k in tabelas.keys() if 'tab_I' in k.lower()]
-            print(f"  Chaves com 'tab_I': {chave}")
-        else:
-            print(f"  Todas as chaves: {list(tabelas.keys())}")
+        print("  TAB_I esta vazia!")
+        chave_tab_i = [k for k in tabelas.keys() if 'tab_I' in k]
+        print(f"  Chaves contendo 'tab_I': {chave_tab_i}")
+        if chave_tab_i:
+            print(f"  Colunas da primeira tabela encontrada: {list(tabelas[chave_tab_i[0]].columns)}")
 
     print(f"  {len(base)} fundos processados com sucesso")
     return base
