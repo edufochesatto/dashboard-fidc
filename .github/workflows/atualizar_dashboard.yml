@@ -5,7 +5,6 @@ on:
     # Roda toda segunda-feira às 6h (horário de SP = 9h UTC)
     - cron: '0 9 * * 1'
   workflow_dispatch:
-    # Permite rodar manualmente pelo botão do GitHub
 
 jobs:
   atualizar:
@@ -32,9 +31,13 @@ jobs:
         run: python src/main.py
 
       - name: ⏰ Registrar timestamp
-        run: echo "Última atualização: $(date -u)" > ultima_execucao.txt
+        run: echo "Ultima atualizacao: $(date -u)" > ultima_execucao.txt
 
       - name: 💾 Salvar timestamp
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "📊 Atualização automática do dashboard"
+          file_pattern: ultima_execucao.txt
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "📊 Atualização automática - $(date +%d/%m/%Y)"
