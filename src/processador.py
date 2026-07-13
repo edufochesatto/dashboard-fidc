@@ -175,9 +175,10 @@ def processar_tab_iv(df):
     qtd = df_proc.groupby('cnpj_fundo').size().reset_index(name='num_prazos')
     return qtd
 
-def consolidar_fundos(tabelas, competencia):
+defdef consolidar_fundos(tabelas, competencia):
     """Consolida dados de TODOS os fundos a partir de todas as tabelas"""
-    print("🔄 Consolidando dados de todos os FIDCs...")
+    print("Consolidando dados de todos os FIDCs...")
+    print(f"  Tabelas disponiveis: {list(tabelas.keys())}")
 
     tab_i = processar_tab_i(tabelas.get('inf_mensal_fidc_tab_I'))
     tab_vi = processar_tab_vi(tabelas.get('inf_mensal_fidc_tab_VI'))
@@ -185,26 +186,33 @@ def consolidar_fundos(tabelas, competencia):
     tab_v = processar_tab_v(tabelas.get('inf_mensal_fidc_tab_V'))
 
     base = tab_i.copy() if not tab_i.empty else pd.DataFrame()
+    print(f"  TAB_I processada: {len(base)} fundos")
 
     if not base.empty:
         base['competencia'] = competencia
-
         if not tab_vi.empty and 'cnpj_fundo' in tab_vi.columns:
             cols_vi = [c for c in tab_vi.columns if c not in ['nome_fundo']]
             base = base.merge(tab_vi[cols_vi], on='cnpj_fundo', how='left', suffixes=('', '_vi'))
-
         if not tab_ii.empty and 'cnpj_fundo' in tab_ii.columns:
             base = base.merge(tab_ii, on='cnpj_fundo', how='left', suffixes=('', '_ii'))
-
         if not tab_v.empty and 'cnpj_fundo' in tab_v.columns:
             base = base.merge(tab_v, on='cnpj_fundo', how='left', suffixes=('', '_v'))
-
         for col in base.columns:
             if col not in ['cnpj_fundo', 'nome_fundo', 'competencia']:
                 base[col] = base[col].fillna(0)
-
         if 'pl' in base.columns:
+            antes = len(base)
             base = base[base['pl'] > 0]
+            print(f"  Fundos com PL > 0: {len(base)} (removidos {antes - len(base)} sem PL)")
+    else:
+        print("  TAB_I esta vazia!")
+        if 'inf_mensal_fidc_tab_I' in tabelas:
+            print("  Chave existe! Mas processar_tab_i retornou vazio.")
+        elif any('tab_I' in k.lower() for k in tabelas.keys()):
+            chave_encontrada = [k for k in tabelas.keys() if 'tab_I' in k.lower()]
+            print(f"  Chaves com 'tab_I': {chave_encontrada}")
+        else:
+            print(f"  Todas as chaves: {list(tabelas.keys())}")
 
-    print(f"  ✅ {len(base)} fundos processados com sucesso")
+    print(f"  {len(base)} fundos processados com sucesso")
     return base
