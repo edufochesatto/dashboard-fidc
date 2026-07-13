@@ -6,26 +6,43 @@ para TODOS os FIDCs disponíveis.
 import pandas as pd
 import numpy as np
 
+
 def processar_tab_i(df):
     """TAB_I: Balanço Patrimonial - PL, Carteira, PDD"""
     if df is None or df.empty:
         return pd.DataFrame()
-
     cols = df.columns.tolist()
-    mapeamento = {
-        'CNPJ_FUNDO': 'cnpj_fundo',
-        'DENOMINACAO_SOCIAL': 'nome_fundo',
-        'VL_PATRIMONIO_LIQUIDO': 'pl',
-        'VL_CARTEIRA': 'carteira',
-        'VL_PDD': 'pdd',
-    }
 
-    rename_map = {k: v for k, v in mapeamento.items() if k in cols}
-    if not rename_map:
+    # Mapeamento flexível: tenta nomes exatos, depois busca parcial
+    col_cnpj = 'CNPJ_FUNDO' if 'CNPJ_FUNDO' in cols else \
+               ([c for c in cols if 'CNPJ' in c.upper() and 'FUND' in c.upper()] or [None])[0]
+    col_nome = 'DENOM_SOCIAL' if 'DENOM_SOCIAL' in cols else \
+               ([c for c in cols if 'DENOM' in c.upper()] or [None])[0]
+    col_pl = 'VL_PATRIMONIO_LIQUIDO' if 'VL_PATRIMONIO_LIQUIDO' in cols else \
+             ([c for c in cols if 'PATRIMONIO' in c.upper() and 'LIQUID' in c.upper()] or [None])[0]
+    col_carteira = 'VL_CARTEIRA' if 'VL_CARTEIRA' in cols else \
+                   ([c for c in cols if 'CARTEIRA' in c.upper()] or [None])[0]
+    col_pdd = 'VL_PDD' if 'VL_PDD' in cols else \
+              ([c for c in cols if 'PDD' in c.upper()] or [None])[0]
+
+    if not col_cnpj:
+        print("  ⚠️ TAB_I: Coluna CNPJ_FUNDO não encontrada!")
+        print(f"  Colunas disponíveis: {cols[:20]}...")
+        return pd.DataFrame()
+
+    rename_map = {}
+    if col_cnpj: rename_map[col_cnpj] = 'cnpj_fundo'
+    if col_nome: rename_map[col_nome] = 'nome_fundo'
+    if col_pl: rename_map[col_pl] = 'pl'
+    if col_carteira: rename_map[col_carteira] = 'carteira'
+    if col_pdd: rename_map[col_pdd] = 'pdd'
+
+    if not col_pl and not col_carteira and not col_pdd:
+        print("  ⚠️ TAB_I: Nenhuma coluna financeira encontrada!")
+        print(f"  Colunas disponíveis: {cols}")
         return pd.DataFrame()
 
     df_proc = df[list(rename_map.keys())].rename(columns=rename_map).copy()
-
     for col in ['pl', 'carteira', 'pdd']:
         if col in df_proc.columns:
             df_proc[col] = pd.to_numeric(df_proc[col], errors='coerce').fillna(0)
@@ -46,52 +63,9 @@ def processar_tab_i(df):
             .str.zfill(14)
         )
 
+    print(f"  ✅ TAB_I: {len(df_proc)} fundos, colunas: {list(df_proc.columns)}")
     return df_proc
-
-def processar_tab_vi(df):
-    """TAB_VI: Resultado - Rentabilidade e %CDI"""
-    if df is None or df.empty:
-        return pd.DataFrame()
-
-    cols = df.columns.tolist()
-    col_cnpj = [c for c in cols if 'CNPJ' in c.upper()]
-    col_rent = [c for c in cols if 'RENTAB' in c.upper()]
-    col_cdi = [c for c in cols if 'CDI' in c.upper()]
-
-    if not col_cnpj or not col_rent:
-        return pd.DataFrame()
-
-    rename_map = {col_cnpj[0]: 'cnpj_fundo'}
-    if col_rent:
-        rename_map[col_rent[0]] = 'rentabilidade'
-    if col_cdi:
-        rename_map[col_cdi[0]] = 'cdi'
-
-    df_proc = df[list(rename_map.keys())].rename(columns=rename_map).copy()
-
-    for col in ['rentabilidade', 'cdi']:
-        if col in df_proc.columns:
-            df_proc[col] = pd.to_numeric(df_proc[col], errors='coerce').fillna(0)
-
-    if 'rentabilidade' in df_proc.columns and 'cdi' in df_proc.columns:
-        df_proc['pct_cdi'] = np.where(
-            df_proc['cdi'] > 0,
-            (df_proc['rentabilidade'] / df_proc['cdi'] * 100).round(0),
-            0
-        )
-        df_proc['premio_pp'] = (df_proc['pct_cdi'] - 100).round(0)
-    else:
-        df_proc['pct_cdi'] = 0
-        df_proc['premio_pp'] = 0
-
-    if 'cnpj_fundo' in df_proc.columns:
-        df_proc['cnpj_fundo'] = (
-            df_proc['cnpj_fundo'].astype(str)
-            .str.replace(r'\D', '', regex=True).str.zfill(14)
-        )
-
-    return df_proc
-
+    
 def processar_tab_ii(df):
     """TAB_II: Carteira Detalhada - Concentração por devedor"""
     if df is None or df.empty:
