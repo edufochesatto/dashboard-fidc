@@ -1,71 +1,71 @@
-#!/usr/bin/env python3
 """
-Dashboard de Governança de FIDCs - Automatizado
-Pipeline: CVM → Processamento → Rankings → Google Sheets
+Dioptra FIDC — Orquestrador principal.
+Baixa dados da CVM, processa, filtra e gera o dashboard.
 """
-
+import argparse
 import sys
-import os
+from pathlib import Path
+from cvm_downloader import obter_dados_recentes, baixar_zip, baixar_historico
+from data_processor import carregar_tabela, filtrar_duplicatas_pme, calcular_metricas_governanca
+from dashboard_generator import gerar_dashboard
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from config import GOOGLE_SHEETS_ID, CNPJS_DESTAQUE
-from src.cvm_downloader import carregar_dados_cvm
-from src.processador import consolidar_fundos
-from src.rankings import (
-    gerar_todos_rankings,
-    gerar_comparativo_top5,
-    gerar_posicao_indicador,
-)
-from src.sheets_uploader import atualizar_planilha
+DATA_DIR = Path("./dados_cvm")
+OUTPUT_DIR = Path("./output")
+OUTPUT_FILE = OUTPUT_DIR / "Dioptra_FIDC_Julho2026.xlsx"
 
 def main():
+    parser = argparse.ArgumentParser(description="Dioptra FIDC — Dashboard de FIDCs")
+    parser.add_argument("--mes", type=str, help="Competência YYYYMM (ex: 202605)")
+    parser.add_argument("--historico", type=str, help="Ano histórico YYYY (ex: 2024)")
+    args = parser.parse_args()
+
     print("=" * 60)
-    print("DASHBOARD DE GOVERNANCA DE FIDCs")
-    print("   Automatizacao CVM > Google Sheets > Looker Studio")
+    print("DIOPTRA FIDC")
     print("=" * 60)
 
-    # 1. Baixar dados da CVM
-    print("\nETAPA 1/4 - Baixando dados da CVM...")
-    tabelas, competencia = carregar_dados_cvm()
+    try:
+        if args.mes:
+            print(f"\n[1/4] Baixando {args.mes}...")
+            baixar_zip(args.mes, DATA_DIR)
+        elif args.historico:
+            print(f"\n[1/4] Baixando histórico {args.historico}...")
+            baixar_historico(args.historico, DATA_DIR)
+        else:
+            print("\n[1/4] Baixando dados mais recentes da CVM...")
+            obter_dados_recentes(DATA_DIR, meses=1)
+    except Exception as e:
+        print(f"[ERRO] Falha ao baixar: {e}")
+        sys.exit(1)
 
-    # 2. Processar todos os fundos
-    print(f"\nETAPA 2/4 - Processando indicadores ({competencia})...")
-    df_geral = consolidar_fundos(tabelas, competencia)
+    print("\n[2/4] Carregando tabelas...")
+    try:
+        tab_i = carregar_tabela(DATA_DIR, "tab_I")
+        tab_ii = carregar_tabela(DATA_DIR, "tab_II")
+        tab_iii = carregar_tabela(DATA_DIR, "tab_III")
+        tab_v = carregar_tabela(DATA_DIR, "tab_V")
+        tab_vi = carregar_tabela(DATA_DIR, "tab_VI")
+        tab_vii = carregar_tabela(DATA_DIR, "tab_VII")
+        tab_ix = carregar_tabela(DATA_DIR, "tab_IX")
+    except FileNotFoundError as e:
+        print(f"[ERRO] {e}")
+        sys.exit(1)
 
-    if df_geral.empty:
-        print("Nenhum fundo encontrado. Abortando.")
-        return
+    print("[3/4] Filtrando Duplicatas/PME...")
+    df = filtrar_duplicatas_pme(tab_i, tab_ii, tab_iii, tab_v, tab_vi, tab_vii, tab_ix)
+    if len(df) == 0:
+        print("[AVISO] Nenhum fundo de Duplicatas/PME encontrado.")
+        if 'CLASSE' in tab_i.columns:
+            print("Classes disponíveis:")
+            print(tab_i['CLASSE'].value_counts().to_string())
+        sys.exit(1)
+    print(f"   → {len(df)} fundos encontrados.")
+    metricas = calcular_metricas_governanca(df)
 
-    print(f"\nTotal de {len(df_geral)} FIDCs processados")
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    print(f"\n[4/4] Gerando dashboard...")
+    gerar_dashboard(df, metricas, OUTPUT_FILE)
 
-    # 3. Gerar rankings
-    print(f"\nETAPA 3/4 - Gerando rankings...")
-    rankings = gerar_todos_rankings(df_geral)
-    comparativo = gerar_comparativo_top5(df_geral, CNPJS_DESTAQUE[0])
-
-    if not df_geral.empty:
-        print(f"\nPosicao do IOX90 no mercado:")
-        for col, label in [('pct_cdi', 'CDI'), ('pdd_pct', 'PDD'), ('pl', 'PL')]:
-            posicao = gerar_posicao_indicador(df_geral, CNPJS_DESTAQUE[0], col, label)
-            print(f"   {posicao}")
-
-    # 4. Atualizar Google Sheets
-    print(f"\nETAPA 4/4 - Enviando para Google Sheets...")
-    if not GOOGLE_SHEETS_ID or GOOGLE_SHEETS_ID == "SEU_ID_AQUI":
-        print("GOOGLE_SHEETS_ID nao configurado. Configure em config.py")
-        print(f"Dados prontos: {len(df_geral)} fundos, {len(rankings)} rankings")
-        if not comparativo.empty:
-            print(f"Comparativo Top 5: {len(comparativo)} linhas")
-        return
-
-    atualizar_planilha(GOOGLE_SHEETS_ID, df_geral, rankings, comparativo)
-
-    print("\n" + "=" * 60)
-    print("Pipeline concluida!")
-    print(f"Competencia: {competencia}")
-    print(f"Fundos: {len(df_geral)}")
-    print("=" * 60)
+    print(f"\n✅ Concluído! {len(df)} fundos analisados.")
 
 if __name__ == "__main__":
     main()
