@@ -1,73 +1,50 @@
 """
-Download e extração dos dados de FIDC do Portal Dados Abertos CVM
+Módulo responsável por baixar e extrair os dados do Informe Mensal de FIDCs
+do Portal de Dados Abertos da CVM.
 """
-
 import requests
 import zipfile
 import io
-import pandas as pd
-from datetime import datetime
+import os
+import re
+from pathlib import Path
 
-URL_CVM_BASE = "https://dados.cvm.gov.br/dados/FIDC/DOC/INF_MENSAL/DADOS"
+CVM_BASE_URL = "https://dados.cvm.gov.br/dados/FIDC/DOC/INF_MENSAL/DADOS"
 
-def baixar_zip_cvm(ano, mes):
-    url = f"{URL_CVM_BASE}/inf_mensal_fidc_{ano}{mes:02d}.zip"
-    print(f"Baixando: {url}")
-    try:
-        resp = requests.get(url, timeout=60)
-        if resp.status_code == 200:
-            return io.BytesIO(resp.content)
-        else:
-            print(f"HTTP {resp.status_code} para {ano}{mes:02d}")
-            return None
-    except Exception as e:
-        print(f"Erro ao baixar: {e}")
-        return None
+def listar_meses_disponiveis():
+    response = requests.get(f"{CVM_BASE_URL}/", timeout=30)
+    response.raise_for_status()
+    padrao = r'inf_mensal_fidc_(\d{6})\.zip'
+    return sorted(set(re.findall(padrao, response.text)), reverse=True)
 
-def extrair_tabelas_do_zip(zip_bytes):
-    """Extrai todos os CSVs do ZIP. Remove o sufixo _YYYYMM do nome das tabelas."""
-    tabelas = {}
-    try:
-        with zipfile.ZipFile(zip_bytes) as z:
-            for nome in z.namelist():
-                if not nome.endswith(('.csv', '.txt')):
-                    continue
-                nome_arquivo = nome.split('/')[-1].replace('.csv', '').replace('.txt', '')
-                # Remove sufixo _YYYYMM (ex: _202605) dos nomes dos arquivos da CVM
-                nome_tabela = nome_arquivo
-                if len(nome_arquivo) > 7 and nome_arquivo[-7] == '_' and nome_arquivo[-6:].isdigit():
-                    nome_tabela = nome_arquivo[:-7]
-                try:
-                    df = pd.read_csv(
-                        z.open(nome), sep=';', encoding='latin1',
-                        dtype=str, low_memory=False
-                    )
-                    df.columns = df.columns.str.strip()
-                    tabelas[nome_tabela] = df
-                    print(f"  OK {nome_tabela}: {len(df)} linhas, {len(df.columns)} colunas")
-                except Exception as e:
-                    print(f"  Erro ao ler {nome}: {e}")
-    except Exception as e:
-        print(f"Erro ao extrair ZIP: {e}")
-    return tabelas
+def baixar_zip(competencia, dest_dir):
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    url = f"{CVM_BASE_URL}/inf_mensal_fidc_{competencia}.zip"
+    print(f"[DOWNLOAD] Baixando {url}...")
+    response = requests.get(url, timeout=120)
+    response.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+        zf.extractall(dest_dir)
+    print(f"[OK] Extraído em {dest_dir}")
+    return dest_dir
 
-def encontrar_ultima_competencia():
-    hoje = datetime.now()
-    for tentativa in range(4):
-        mes = hoje.month - 2 - tentativa
-        ano = hoje.year
-        if mes <= 0:
-            mes += 12
-            ano -= 1
-        zip_bytes = baixar_zip_cvm(ano, mes)
-        if zip_bytes:
-            print(f"Competencia encontrada: {mes:02d}/{ano}")
-            return zip_bytes, ano, mes
-    raise Exception("Nao foi possivel baixar dados da CVM apos 4 tentativas")
+def baixar_historico(ano, dest_dir):
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    url = f"{CVM_BASE_URL}/HIST/inf_mensal_fidc_{ano}.zip"
+    print(f"[DOWNLOAD] Baixando histórico {url}...")
+    response = requests.get(url, timeout=300)
+    response.raise_for_status()
+    with zipfile.ZipFile(io.BytesIO(response.content)) as zf:
+        zf.extractall(dest_dir)
+    print(f"[OK] Histórico {ano} extraído em {dest_dir}")
+    return dest_dir
 
-def carregar_dados_cvm():
-    print("CVM FIDC - Download de Dados")
-    zip_bytes, ano, mes = encontrar_ultima_competencia()
-    tabelas = extrair_tabelas_do_zip(zip_bytes)
-    print(f"Total de tabelas carregadas: {len(tabelas)}")
-    return tabelas, f"{mes:02d}/{ano}"
+def obter_dados_recentes(dest_dir, meses=1):
+    disponiveis = listar_meses_disponiveis()
+    if not disponiveis:
+        raise RuntimeError("Nenhum arquivo encontrado no repositório da CVM.")
+    for competencia in disponiveis[:meses]:
+        baixar_zip(competencia, dest_dir)
+    return Path(dest_dir)
